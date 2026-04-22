@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   createAdminCollection,
   createAdminOutfit,
@@ -904,34 +905,37 @@ export function AdminDashboard() {
           <p className="mt-2 text-sm font-medium text-[var(--foreground)]">{error}</p>
         ) : null}
 
-        {previewImage ? (
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(0,0,0,0.78)] p-4"
-            onClick={() => setPreviewImage(null)}
-          >
+      </div>
+      {typeof window !== "undefined" && previewImage
+        ? createPortal(
             <div
-              className="relative w-full max-w-md rounded-[28px] bg-white p-3"
-              onClick={(event) => event.stopPropagation()}
+              className="fixed inset-0 z-[999] flex items-center justify-center bg-[rgba(0,0,0,0.88)] p-4 sm:p-6"
+              onClick={() => setPreviewImage(null)}
             >
               <button
                 type="button"
                 onClick={() => setPreviewImage(null)}
-                className="absolute right-3 top-3 z-10 rounded-full bg-black px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-white"
+                className="absolute right-4 top-4 rounded-full border border-white/20 bg-black/70 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white"
               >
                 Close
               </button>
-              <Image
-                src={previewImage}
-                alt="Affiliate preview"
-                width={850}
-                height={1125}
-                unoptimized
-                className="w-full rounded-[22px] object-cover"
-              />
-            </div>
-          </div>
-        ) : null}
-      </div>
+              <div
+                className="relative flex max-h-full w-full items-center justify-center"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <Image
+                  src={previewImage}
+                  alt="Affiliate preview"
+                  width={850}
+                  height={1125}
+                  unoptimized
+                  className="max-h-[92vh] w-auto max-w-full rounded-[24px] object-contain"
+                />
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </section>
   );
 }
