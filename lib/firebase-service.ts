@@ -598,9 +598,10 @@ export async function uploadAdminImage(
  */
 export async function fetchAdminAffiliateItems(
   search?: string,
+  maxItems = 200,
 ): Promise<AffiliateLibraryListResponse> {
   try {
-    const snap = await getDocs(query(getAffiliateCollectionRef(), limit(200)));
+    const snap = await getDocs(query(getAffiliateCollectionRef(), limit(maxItems)));
     const searchTerm = search?.trim().toLowerCase() ?? "";
 
     const items = snap.docs

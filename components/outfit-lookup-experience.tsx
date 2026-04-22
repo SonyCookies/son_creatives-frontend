@@ -16,7 +16,12 @@ import {
   isValidOutfitCode,
   normalizeOutfitCode,
 } from "@/lib/outfit-code";
-import type { CodeLookupResponse, Outfit, OutfitCollection } from "@/types/outfit";
+import type {
+  AffiliateItem,
+  CodeLookupResponse,
+  Outfit,
+  OutfitCollection,
+} from "@/types/outfit";
 
 type LookupStatus = "idle" | "loading" | "success" | "not-found" | "error";
 
@@ -275,11 +280,7 @@ function CollectionResultCard({
             </p>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {activeOutfit.affiliate_items.map((item, index) => (
-              <AffiliateItemCard key={item.id || index} item={item} />
-            ))}
-          </div>
+          <AffiliateMasonry items={activeOutfit.affiliate_items} columns={{ base: 1, sm: 2, lg: 3 }} />
         </div>
       ) : null}
     </article>
@@ -343,12 +344,96 @@ function OutfitResultCard({ outfit }: { outfit: Outfit }) {
           </div>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          {outfit.affiliate_items.map((item, index) => (
-            <AffiliateItemCard key={item.id || index} item={item} />
-          ))}
-        </div>
+        <AffiliateMasonry items={outfit.affiliate_items} columns={{ base: 1, sm: 2 }} />
       </div>
     </article>
   );
+}
+
+function AffiliateMasonry({
+  items,
+  columns,
+}: {
+  items: AffiliateItem[];
+  columns: {
+    base: 1 | 2 | 3;
+    sm?: 1 | 2 | 3;
+    lg?: 1 | 2 | 3;
+  };
+}) {
+  const baseColumns = splitItemsIntoColumns(items, columns.base);
+  const smColumns = splitItemsIntoColumns(items, columns.sm ?? columns.base);
+  const lgColumns = splitItemsIntoColumns(
+    items,
+    columns.lg ?? columns.sm ?? columns.base,
+  );
+
+  return (
+    <>
+      <div
+        className={
+          columns.sm || columns.lg
+            ? "flex flex-col gap-4 sm:hidden"
+            : "flex flex-col gap-4"
+        }
+      >
+        {baseColumns.map((columnItems, columnIndex) => (
+          <div key={`base-${columnIndex}`} className="flex flex-col">
+            {columnItems.map((item, itemIndex) => (
+              <AffiliateItemCard
+                key={`${item.id || itemIndex}-base-${columnIndex}`}
+                item={item}
+              />
+            ))}
+          </div>
+        ))}
+      </div>
+
+      {columns.sm ? (
+        <div
+          className={
+            columns.lg
+              ? "hidden gap-4 sm:flex lg:hidden"
+              : "hidden gap-4 sm:flex"
+          }
+        >
+          {smColumns.map((columnItems, columnIndex) => (
+            <div key={`sm-${columnIndex}`} className="min-w-0 flex-1">
+              {columnItems.map((item, itemIndex) => (
+                <AffiliateItemCard
+                  key={`${item.id || itemIndex}-sm-${columnIndex}`}
+                  item={item}
+                />
+              ))}
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {columns.lg ? (
+        <div className="hidden gap-4 lg:flex">
+          {lgColumns.map((columnItems, columnIndex) => (
+            <div key={`lg-${columnIndex}`} className="min-w-0 flex-1">
+              {columnItems.map((item, itemIndex) => (
+                <AffiliateItemCard
+                  key={`${item.id || itemIndex}-lg-${columnIndex}`}
+                  item={item}
+                />
+              ))}
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+function splitItemsIntoColumns(items: AffiliateItem[], columnCount: number) {
+  const columns = Array.from({ length: columnCount }, () => [] as AffiliateItem[]);
+
+  items.forEach((item, index) => {
+    columns[index % columnCount].push(item);
+  });
+
+  return columns;
 }

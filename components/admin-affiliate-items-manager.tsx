@@ -36,6 +36,9 @@ const emptyFormState: AffiliateItemFormState = {
   thumbnail_preview: "",
 };
 
+const DEFAULT_LIBRARY_FETCH_LIMIT = 5;
+const SEARCH_LIBRARY_FETCH_LIMIT = 50;
+
 function createFormState(item: AffiliateLibraryItem | null): AffiliateItemFormState {
   if (!item) {
     return emptyFormState;
@@ -74,7 +77,10 @@ export function AdminAffiliateItemsManager() {
       setError(null);
 
       try {
-        const payload = await fetchAdminAffiliateItems();
+        const payload = await fetchAdminAffiliateItems(
+          undefined,
+          DEFAULT_LIBRARY_FETCH_LIMIT,
+        );
 
         if (!isMounted) {
           return;
@@ -111,7 +117,12 @@ export function AdminAffiliateItemsManager() {
 
     try {
       const activeSearch = options?.search ?? appliedSearch;
-      const payload = await fetchAdminAffiliateItems(activeSearch);
+      const payload = await fetchAdminAffiliateItems(
+        activeSearch,
+        activeSearch?.trim()
+          ? SEARCH_LIBRARY_FETCH_LIMIT
+          : DEFAULT_LIBRARY_FETCH_LIMIT,
+      );
       const requestedId = options?.nextItemId ?? selectedItemId;
       const activeItem =
         payload.data.find((item) => item.id === requestedId) ??
@@ -235,7 +246,7 @@ export function AdminAffiliateItemsManager() {
   }
 
   return (
-    <section className="grid gap-6 xl:grid-cols-[0.85fr_1.15fr]">
+    <section className="grid items-start gap-6 xl:grid-cols-[0.85fr_1.15fr]">
       <div className="surface-panel rounded-[28px] p-5">
         <div className="mb-4 flex items-center justify-between">
           <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[var(--muted)]">
@@ -280,6 +291,12 @@ export function AdminAffiliateItemsManager() {
         <div className="space-y-3">
           {isLoading ? (
             <p className="text-sm text-[var(--muted)]">Loading...</p>
+          ) : null}
+
+          {!isLoading && !appliedSearch.trim() && items.length > 0 ? (
+            <p className="text-xs text-[var(--muted)]">
+              Showing the latest 5 items. Use search to find older ones.
+            </p>
           ) : null}
 
           {!isLoading && items.length === 0 ? (
