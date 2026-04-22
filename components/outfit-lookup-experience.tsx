@@ -109,7 +109,7 @@ export function OutfitLookupExperience() {
   }
 
   return (
-    <section className="flex flex-col gap-6">
+    <section className="mx-auto flex w-full max-w-[1200px] flex-col gap-6">
       <div className="surface-panel animate-enter rounded-[32px] p-6 sm:p-8">
         <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--accent-deep)]">
           Search by code
@@ -149,7 +149,7 @@ export function OutfitLookupExperience() {
         ) : null}
       </div>
 
-        <div className="mx-auto max-w-[1200px] space-y-6">
+      <div className="space-y-6">
           {isLoading ? <LoadingSkeleton /> : null}
 
           {!isLoading && status === "success" && lookupResult ? (
