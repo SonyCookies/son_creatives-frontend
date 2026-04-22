@@ -28,7 +28,7 @@ import type {
   OutfitCollection,
   UploadResponse,
 } from "@/types/outfit";
-import { normalizeOutfitCode } from "./outfit-code";
+import { normalizeOutfitCode, formatOutfitCode } from "./outfit-code";
 
 /**
  * Custom error class for Firebase operations
@@ -60,10 +60,14 @@ export async function fetchFeaturedOutfits(): Promise<FeaturedOutfitsResponse> {
     const q = query(outfitsRef, where("is_featured", "==", true), limit(10));
     const querySnapshot = await getDocs(q);
 
-    const outfits: Outfit[] = querySnapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    })) as unknown as Outfit[];
+    const outfits: Outfit[] = querySnapshot.docs.map((d) => {
+      const data = d.data();
+      return {
+        id: d.id,
+        ...data,
+        formatted_code: formatOutfitCode((data as any).code),
+      };
+    }) as unknown as Outfit[];
 
     return { data: outfits };
   } catch (error) {
@@ -104,10 +108,14 @@ export async function fetchCodeLookup(
       const outfitsQuery = query(outfitsRef, where("collection_id", "==", collectionDoc.id));
       const outfitsSnap = await getDocs(outfitsQuery);
 
-      const outfits: Outfit[] = outfitsSnap.docs.map((d) => ({
-        id: d.id,
-        ...d.data(),
-      })) as unknown as Outfit[];
+      const outfits: Outfit[] = outfitsSnap.docs.map((d) => {
+        const data = d.data();
+        return {
+          id: d.id,
+          ...data,
+          formatted_code: formatOutfitCode((data as any).code),
+        };
+      }) as unknown as Outfit[];
 
       return {
         message: "Collection found",
@@ -115,6 +123,7 @@ export async function fetchCodeLookup(
         data: {
           id: collectionDoc.id,
           ...collectionData,
+          formatted_code: formatOutfitCode((collectionData as any).code),
           outfits,
         } as unknown as OutfitCollection,
       };
@@ -129,17 +138,19 @@ export async function fetchCodeLookup(
     );
     const outfitSnap = await getDocs(outfitQuery);
 
-    if (!outfitSnap.empty) {
-      const outfitDoc = outfitSnap.docs[0];
-      return {
-        message: "Outfit found",
-        type: "outfit",
-        data: {
-          id: outfitDoc.id,
-          ...outfitDoc.data(),
-        } as unknown as Outfit,
-      };
-    }
+      if (!outfitSnap.empty) {
+        const outfitDoc = outfitSnap.docs[0];
+        const outfitData = outfitDoc.data();
+        return {
+          message: "Outfit found",
+          type: "outfit",
+          data: {
+            id: outfitDoc.id,
+            ...outfitData,
+            formatted_code: formatOutfitCode((outfitData as any).code),
+          } as unknown as Outfit,
+        };
+      }
 
     throw new FirebaseError(`No result found for code: ${code}`, 404);
   } catch (error) {
@@ -213,7 +224,11 @@ export async function fetchAdminCollections(search?: string) {
       return {
         id: d.id,
         ...data,
-        outfits,
+        formatted_code: formatOutfitCode(data.code),
+        outfits: outfits.map((o: any) => ({
+          ...o,
+          formatted_code: formatOutfitCode(o.code),
+        })),
       } as unknown as OutfitCollection;
     });
 
