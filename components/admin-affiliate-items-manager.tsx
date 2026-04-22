@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
   createAdminAffiliateItem,
@@ -252,18 +253,26 @@ export function AdminAffiliateItemsManager() {
           <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[var(--muted)]">
             Library
           </p>
-          <button
-            type="button"
-            onClick={() => {
-              setSelectedItemId(null);
-              setForm(emptyFormState);
-              setMessage(null);
-              setError(null);
-            }}
-            className="rounded-full border border-[var(--border-soft)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em]"
-          >
-            New
-          </button>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/admin/affiliate-items/all"
+              className="rounded-full border border-[var(--border-soft)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em]"
+            >
+              View all
+            </Link>
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedItemId(null);
+                setForm(emptyFormState);
+                setMessage(null);
+                setError(null);
+              }}
+              className="rounded-full border border-[var(--border-soft)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em]"
+            >
+              New
+            </button>
+          </div>
         </div>
 
         <form

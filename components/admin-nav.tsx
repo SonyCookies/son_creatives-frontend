@@ -10,17 +10,18 @@ export function AdminNav() {
     { name: "Collections", href: "/admin" },
     { name: "Featured", href: "/admin/featured" },
     { name: "Affiliate Items", href: "/admin/affiliate-items" },
+    { name: "View All", href: "/admin/affiliate-items/all" },
   ];
 
   return (
-    <nav className="flex items-center gap-1 rounded-full border border-[var(--border-soft)] bg-white/50 p-1 backdrop-blur-md">
+    <nav className="flex w-full max-w-3xl flex-wrap items-center justify-center gap-2 rounded-[28px] border border-[var(--border-soft)] bg-white/60 p-2 backdrop-blur-md sm:w-auto sm:max-w-none sm:gap-1 sm:rounded-full sm:p-1">
       {links.map((link) => {
         const isActive = pathname === link.href;
         return (
           <Link
             key={link.href}
             href={link.href}
-            className={`rounded-full px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.2em] transition-all duration-300 ${
+            className={`min-w-[calc(50%-0.25rem)] rounded-full px-3 py-2 text-center text-[11px] font-semibold uppercase tracking-[0.12em] transition-all duration-300 sm:min-w-0 sm:px-4 sm:py-1.5 sm:text-xs sm:tracking-[0.2em] ${
               isActive
                 ? "bg-black text-white shadow-md shadow-black/10"
                 : "text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-black/5"
