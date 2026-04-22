@@ -1,18 +1,34 @@
 "use client";
 
 import type { CSSProperties } from "react";
-import { useRef, useState } from "react";
-import { AdminDashboard } from "@/components/admin-dashboard";
+import { useRef, useState, useEffect } from "react";
+import { AdminNav } from "@/components/admin-nav";
 
 const ADMIN_PIN = "110558";
+const ADMIN_SESSION_KEY = "admin_son_creatives_unlocked";
 const ADMIN_PIN_LENGTH = 6;
 const maskedDigitStyle = {
   WebkitTextSecurity: "disc",
 } as CSSProperties;
 
-export function AdminAccess() {
+export function AdminAccess({ children }: { children: React.ReactNode }) {
   const [digits, setDigits] = useState<string[]>(Array(ADMIN_PIN_LENGTH).fill(""));
   const [isUnlocked, setIsUnlocked] = useState(false);
+  const [isReady, setIsReady] = useState(false);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      const session = sessionStorage.getItem(ADMIN_SESSION_KEY) === "true";
+      if (session) {
+        setIsUnlocked(true);
+      }
+      setIsReady(true);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+    };
+  }, []);
   const [error, setError] = useState<string | null>(null);
   const inputRefs = useRef<Array<HTMLInputElement | null>>([]);
 
@@ -29,6 +45,7 @@ export function AdminAccess() {
     }
 
     setIsUnlocked(true);
+    sessionStorage.setItem(ADMIN_SESSION_KEY, "true");
   }
 
   function updateDigit(index: number, value: string) {
@@ -76,8 +93,17 @@ export function AdminAccess() {
     attemptUnlock(digits);
   }
 
+  if (!isReady) return null;
+
   if (isUnlocked) {
-    return <AdminDashboard />;
+    return (
+      <div className="space-y-8">
+        <div className="flex justify-center">
+          <AdminNav />
+        </div>
+        {children}
+      </div>
+    );
   }
 
   return (

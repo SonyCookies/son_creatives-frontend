@@ -1,13 +1,15 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   createAdminCollection,
   createAdminOutfit,
   deleteAdminCollection,
+  deleteAdminImage,
   deleteAdminOutfit,
+  fetchAdminAffiliateItems,
   fetchAdminCollections,
   uploadAdminImage,
   updateAdminCollection,
@@ -17,9 +19,14 @@ import {
 import type {
   AdminUpsertCollectionPayload,
   AdminUpsertOutfitPayload,
+  AffiliateLibraryItem,
   OutfitCollection,
 } from "@/types/outfit";
-import { normalizeOutfitCode, formatOutfitCode, formatInputCode } from "@/lib/outfit-code";
+import {
+  formatInputCode,
+  formatOutfitCode,
+  normalizeOutfitCode,
+} from "@/lib/outfit-code";
 
 type CollectionFormState = {
   code: string;
@@ -27,15 +34,8 @@ type CollectionFormState = {
   description: string;
 };
 
-type AffiliateItemFormState = {
-  id: string;
-  product_name: string;
-  affiliate_url: string;
-  price: string;
-  thumbnail_url: string;
-  thumbnail_path: string;
-  thumbnail_file: File | null;
-  thumbnail_preview: string;
+type OutfitAffiliateSelection = {
+  library_item_id: string;
 };
 
 type OutfitFormState = {
@@ -47,19 +47,8 @@ type OutfitFormState = {
   image_preview: string;
   description: string;
   is_featured: boolean;
-  affiliate_items: AffiliateItemFormState[];
+  affiliate_items: OutfitAffiliateSelection[];
 };
-
-const emptyAffiliateItem = (): AffiliateItemFormState => ({
-  id: `item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-  product_name: "",
-  affiliate_url: "",
-  price: "",
-  thumbnail_url: "",
-  thumbnail_path: "",
-  thumbnail_file: null,
-  thumbnail_preview: "",
-});
 
 const emptyCollectionForm: CollectionFormState = {
   code: "",
@@ -76,10 +65,12 @@ const emptyOutfitForm = (): OutfitFormState => ({
   image_preview: "",
   description: "",
   is_featured: false,
-  affiliate_items: [emptyAffiliateItem()],
+  affiliate_items: [],
 });
 
-function createCollectionFormState(collection: OutfitCollection | null): CollectionFormState {
+function createCollectionFormState(
+  collection: OutfitCollection | null,
+): CollectionFormState {
   if (!collection) {
     return emptyCollectionForm;
   }
@@ -107,65 +98,75 @@ function createOutfitFormState(
     image_preview: outfit.image_url ?? "",
     description: outfit.description ?? "",
     is_featured: !!outfit.is_featured,
-    affiliate_items:
-      outfit.affiliate_items.length > 0
-        ? outfit.affiliate_items.map((item) => ({
-            id: item.id,
-            product_name: item.product_name ?? "",
-            affiliate_url: item.affiliate_url ?? "",
-            price: item.price != null ? String(item.price) : "",
-            thumbnail_url: item.thumbnail_url ?? "",
-            thumbnail_path: item.thumbnail_path ?? "",
-            thumbnail_file: null,
-            thumbnail_preview: item.thumbnail_url ?? "",
-          }))
-        : [emptyAffiliateItem()],
-  };
-}
-
-const affiliateUrlPattern = /(https?:\/\/\S+)/i;
-
-function parseAffiliatePaste(value: string) {
-  const normalizedValue = value.replace(/\s+/g, " ").trim();
-  const urlMatch = normalizedValue.match(affiliateUrlPattern);
-
-  if (!urlMatch) {
-    return null;
-  }
-
-  const affiliateUrl = urlMatch[0].replace(/[),.;]+$/, "");
-  const productName = normalizedValue.replace(urlMatch[0], "").trim();
-
-  if (!productName) {
-    return null;
-  }
-
-  return {
-    product_name: productName,
-    affiliate_url: affiliateUrl,
+    affiliate_items: outfit.affiliate_items
+      .map((item) => ({
+        library_item_id: item.library_item_id ?? item.id,
+      }))
+      .filter((item) => Boolean(item.library_item_id)),
   };
 }
 
 export function AdminDashboard() {
   const [collections, setCollections] = useState<OutfitCollection[]>([]);
-  const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null);
+  const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(
+    null,
+  );
   const [selectedOutfitId, setSelectedOutfitId] = useState<string | null>(null);
   const [collectionSearch, setCollectionSearch] = useState("");
   const [appliedCollectionSearch, setAppliedCollectionSearch] = useState("");
-  const [collectionForm, setCollectionForm] = useState<CollectionFormState>(emptyCollectionForm);
+  const [collectionForm, setCollectionForm] =
+    useState<CollectionFormState>(emptyCollectionForm);
   const [outfitForm, setOutfitForm] = useState<OutfitFormState>(emptyOutfitForm);
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingCollection, setIsSavingCollection] = useState(false);
   const [isSavingOutfit, setIsSavingOutfit] = useState(false);
+  const [affiliateLibraryItems, setAffiliateLibraryItems] = useState<
+    AffiliateLibraryItem[]
+  >([]);
+  const [affiliateLibrarySearch, setAffiliateLibrarySearch] = useState("");
+  const [isLoadingAffiliateLibrary, setIsLoadingAffiliateLibrary] = useState(true);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [orphanedPaths, setOrphanedPaths] = useState<string[]>([]);
 
   const selectedCollection =
-    collections.find((collection) => String(collection.id) === selectedCollectionId) ?? null;
+    collections.find((collection) => String(collection.id) === selectedCollectionId) ??
+    null;
   const selectedOutfit =
-    selectedCollection?.outfits.find((outfit) => String(outfit.id) === selectedOutfitId) ?? null;
+    selectedCollection?.outfits.find((outfit) => String(outfit.id) === selectedOutfitId) ??
+    null;
+
+  const affiliateLibraryMap = useMemo(
+    () =>
+      new Map(
+        affiliateLibraryItems.map((item) => [String(item.id), item] as const),
+      ),
+    [affiliateLibraryItems],
+  );
+
+  const selectedAffiliateItems = useMemo(
+    () =>
+      outfitForm.affiliate_items.map((selection) => ({
+        selection,
+        libraryItem:
+          affiliateLibraryMap.get(selection.library_item_id) ?? null,
+      })),
+    [affiliateLibraryMap, outfitForm.affiliate_items],
+  );
+
+  const filteredAffiliateLibraryItems = useMemo(() => {
+    const searchTerm = affiliateLibrarySearch.trim().toLowerCase();
+
+    if (!searchTerm) {
+      return affiliateLibraryItems;
+    }
+
+    return affiliateLibraryItems.filter(
+      (item) =>
+        item.product_name.toLowerCase().includes(searchTerm) ||
+        item.affiliate_url.toLowerCase().includes(searchTerm),
+    );
+  }, [affiliateLibraryItems, affiliateLibrarySearch]);
 
   function syncCollectionState(
     nextCollections: OutfitCollection[],
@@ -196,20 +197,24 @@ export function AdminDashboard() {
 
     async function bootstrap() {
       try {
-        const payload = await fetchAdminCollections();
+        const [collectionsPayload, affiliateItemsPayload] = await Promise.all([
+          fetchAdminCollections(),
+          fetchAdminAffiliateItems(),
+        ]);
 
         if (!isMounted) {
           return;
         }
 
-        const firstCollection = payload.data[0] ?? null;
+        const firstCollection = collectionsPayload.data[0] ?? null;
         const firstOutfit = firstCollection?.outfits[0] ?? null;
 
-        setCollections(payload.data);
+        setCollections(collectionsPayload.data);
         setSelectedCollectionId(firstCollection?.id ?? null);
         setSelectedOutfitId(firstOutfit?.id ?? null);
         setCollectionForm(createCollectionFormState(firstCollection));
         setOutfitForm(createOutfitFormState(firstOutfit));
+        setAffiliateLibraryItems(affiliateItemsPayload.data);
       } catch (loadError) {
         if (isMounted) {
           setError(resolveErrorMessage(loadError));
@@ -217,6 +222,7 @@ export function AdminDashboard() {
       } finally {
         if (isMounted) {
           setIsLoading(false);
+          setIsLoadingAffiliateLibrary(false);
         }
       }
     }
@@ -250,6 +256,20 @@ export function AdminDashboard() {
       setError(resolveErrorMessage(loadError));
     } finally {
       setIsLoading(false);
+    }
+  }
+
+  async function loadAffiliateLibrary(search?: string) {
+    setIsLoadingAffiliateLibrary(true);
+    setError(null);
+
+    try {
+      const payload = await fetchAdminAffiliateItems(search);
+      setAffiliateLibraryItems(payload.data);
+    } catch (loadError) {
+      setError(resolveErrorMessage(loadError));
+    } finally {
+      setIsLoadingAffiliateLibrary(false);
     }
   }
 
@@ -338,15 +358,12 @@ export function AdminDashboard() {
     try {
       let outfitImageUrl = outfitForm.image_url;
       let outfitImagePath = outfitForm.image_path;
+      const replacedImagePath =
+        outfitForm.image_file && outfitForm.image_path ? outfitForm.image_path : null;
 
       if (outfitForm.image_file) {
         const uploadedImage = await uploadAdminImage(outfitForm.image_file, "outfit");
         outfitImageUrl = uploadedImage.data.url;
-        
-        // If we're replacing an old image, track it for deletion
-        if (outfitImagePath) {
-          setOrphanedPaths(prev => [...prev, outfitImagePath]);
-        }
         outfitImagePath = uploadedImage.data.path;
       }
 
@@ -356,47 +373,18 @@ export function AdminDashboard() {
         return;
       }
 
-      const affiliateItems = await Promise.all(
-        outfitForm.affiliate_items.map(async (item, index) => {
-          let thumbnailUrl = item.thumbnail_url || "";
-          let thumbnailPath = item.thumbnail_path || "";
-
-          if (item.thumbnail_file) {
-            const uploadedThumbnail = await uploadAdminImage(
-              item.thumbnail_file,
-              "affiliate",
-            );
-            
-            // Track old thumbnail for deletion if replaced
-            if (thumbnailPath) {
-              setOrphanedPaths(prev => [...prev, thumbnailPath]);
-            }
-            
-            thumbnailUrl = uploadedThumbnail.data.url;
-            thumbnailPath = uploadedThumbnail.data.path;
-          }
-
-          return {
-            id: item.id,
-            product_name: item.product_name || "",
-            affiliate_url: item.affiliate_url || "",
-            price: item.price ? Number(item.price) : null,
-            thumbnail_url: thumbnailUrl || null,
-            thumbnail_path: thumbnailPath || null,
-            sort_order: index + 1,
-          };
-        }),
-      );
-
       const payload: AdminUpsertOutfitPayload = {
         code: normalizeOutfitCode(outfitForm.code),
         title: outfitForm.title || "",
-        image_url: outfitImageUrl || "",
+        image_url: outfitImageUrl,
         image_path: outfitImagePath || null,
         description: outfitForm.description || "",
         is_featured: !!outfitForm.is_featured,
         outfit_collection_id: String(selectedCollection.id),
-        affiliate_items: affiliateItems,
+        affiliate_items: outfitForm.affiliate_items.map((item, index) => ({
+          library_item_id: item.library_item_id,
+          sort_order: index + 1,
+        })),
       };
 
       if (selectedOutfit) {
@@ -416,11 +404,9 @@ export function AdminDashboard() {
           nextOutfitId: null,
         });
       }
-      // After successful save, cleanup any orphaned images
-      if (orphanedPaths.length > 0) {
-        const { deleteAdminImage } = await import("@/lib/firebase-service");
-        await Promise.all(orphanedPaths.map(path => deleteAdminImage(path).catch(console.error)));
-        setOrphanedPaths([]);
+
+      if (replacedImagePath && replacedImagePath !== outfitImagePath) {
+        await deleteAdminImage(replacedImagePath).catch(console.error);
       }
     } catch (saveError) {
       setError(resolveErrorMessage(saveError));
@@ -454,41 +440,55 @@ export function AdminDashboard() {
     }
   }
 
-  function addAffiliateItem() {
+  function addAffiliateItemFromLibrary(item: AffiliateLibraryItem) {
+    const alreadyAdded = outfitForm.affiliate_items.some(
+      (affiliateItem) => affiliateItem.library_item_id === item.id,
+    );
+
+    if (alreadyAdded) {
+      setMessage(`"${item.product_name}" is already in this outfit.`);
+      return;
+    }
+
     setOutfitForm((current) => ({
       ...current,
       affiliate_items: [
         ...current.affiliate_items,
-        emptyAffiliateItem(),
+        {
+          library_item_id: item.id,
+        },
       ],
     }));
+    setMessage(`Added "${item.product_name}" to the outfit.`);
   }
 
-  function updateAffiliateItem(
-    index: number,
-    key: keyof AffiliateItemFormState,
-    value: string,
-  ) {
+  function removeAffiliateItem(index: number) {
     setOutfitForm((current) => ({
       ...current,
-      affiliate_items: current.affiliate_items.map((item, itemIndex) =>
-        itemIndex === index ? { ...item, [key]: value } : item,
+      affiliate_items: current.affiliate_items.filter(
+        (_, itemIndex) => itemIndex !== index,
       ),
     }));
   }
 
-  function removeAffiliateItem(index: number) {
+  function moveAffiliateItem(index: number, direction: "up" | "down") {
     setOutfitForm((current) => {
-      const itemToDelete = current.affiliate_items[index];
-      if (itemToDelete.thumbnail_path) {
-        setOrphanedPaths((prev) => [...prev, itemToDelete.thumbnail_path]);
+      const targetIndex = direction === "up" ? index - 1 : index + 1;
+
+      if (
+        targetIndex < 0 ||
+        targetIndex >= current.affiliate_items.length
+      ) {
+        return current;
       }
+
+      const nextItems = [...current.affiliate_items];
+      const [movedItem] = nextItems.splice(index, 1);
+      nextItems.splice(targetIndex, 0, movedItem);
+
       return {
         ...current,
-        affiliate_items:
-          current.affiliate_items.length === 1
-            ? [emptyAffiliateItem()]
-            : current.affiliate_items.filter((_, itemIndex) => itemIndex !== index),
+        affiliate_items: nextItems,
       };
     });
   }
@@ -503,48 +503,6 @@ export function AdminDashboard() {
       image_file: file,
       image_preview: URL.createObjectURL(file),
     }));
-  }
-
-  function handleAffiliateImageChange(index: number, file: File | null) {
-    if (!file) {
-      return;
-    }
-
-    setOutfitForm((current) => ({
-      ...current,
-      affiliate_items: current.affiliate_items.map((item, itemIndex) =>
-        itemIndex === index
-          ? {
-              ...item,
-              thumbnail_file: file,
-              thumbnail_preview: URL.createObjectURL(file),
-            }
-          : item,
-      ),
-    }));
-  }
-
-  function handleAffiliateSmartPaste(index: number, value: string) {
-    const parsed = parseAffiliatePaste(value);
-
-    if (!parsed) {
-      return false;
-    }
-
-    setOutfitForm((current) => ({
-      ...current,
-      affiliate_items: current.affiliate_items.map((item, itemIndex) =>
-        itemIndex === index
-          ? {
-              ...item,
-              product_name: parsed.product_name,
-              affiliate_url: parsed.affiliate_url,
-            }
-          : item,
-      ),
-    }));
-
-    return true;
   }
 
   return (
@@ -652,10 +610,10 @@ export function AdminDashboard() {
               type="text"
               placeholder="#000000"
               value={collectionForm.code}
-              onChange={(e) =>
+              onChange={(event) =>
                 setCollectionForm({
                   ...collectionForm,
-                  code: formatInputCode(e.target.value),
+                  code: formatInputCode(event.target.value),
                 })
               }
               className="w-full rounded-2xl border border-[var(--border-soft)] bg-white px-4 py-3 text-sm outline-none focus:border-black"
@@ -665,7 +623,10 @@ export function AdminDashboard() {
               placeholder="Collection title"
               value={collectionForm.title}
               onChange={(event) =>
-                setCollectionForm((current) => ({ ...current, title: event.target.value }))
+                setCollectionForm((current) => ({
+                  ...current,
+                  title: event.target.value,
+                }))
               }
               className="w-full rounded-2xl border border-[var(--border-soft)] bg-white px-4 py-3 text-sm outline-none"
             />
@@ -741,10 +702,10 @@ export function AdminDashboard() {
                   type="text"
                   placeholder="#AAA111"
                   value={outfitForm.code}
-                  onChange={(e) =>
+                  onChange={(event) =>
                     setOutfitForm({
                       ...outfitForm,
-                      code: formatInputCode(e.target.value),
+                      code: formatInputCode(event.target.value),
                     })
                   }
                   className="w-full rounded-2xl border border-[var(--border-soft)] bg-white px-4 py-3 text-sm outline-none focus:border-black"
@@ -754,7 +715,10 @@ export function AdminDashboard() {
                   placeholder="Outfit title"
                   value={outfitForm.title}
                   onChange={(event) =>
-                    setOutfitForm((current) => ({ ...current, title: event.target.value }))
+                    setOutfitForm((current) => ({
+                      ...current,
+                      title: event.target.value,
+                    }))
                   }
                   className="w-full rounded-2xl border border-[var(--border-soft)] bg-white px-4 py-3 text-sm outline-none"
                 />
@@ -815,106 +779,183 @@ export function AdminDashboard() {
               </label>
 
               <div className="space-y-3 rounded-[24px] border border-[var(--border-soft)] bg-white p-4">
-                <div className="flex items-center justify-between">
+                <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[var(--muted)]">
                     Affiliate items
                   </p>
-                  <button
-                    type="button"
-                    onClick={addAffiliateItem}
-                    className="rounded-full border border-[var(--border-soft)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em]"
-                  >
-                    Add item
-                  </button>
+                  <p className="mt-1 text-sm text-[var(--muted)]">
+                    Outfits now use only linked affiliate-library items. Add them below and reorder as needed.
+                  </p>
                 </div>
 
-                {outfitForm.affiliate_items.map((item, index) => (
+                {selectedAffiliateItems.length === 0 ? (
+                  <div className="rounded-[20px] border border-dashed border-[var(--border-soft)] p-4 text-sm text-[var(--muted)]">
+                    No affiliate items selected for this outfit yet.
+                  </div>
+                ) : null}
+
+                {selectedAffiliateItems.map(({ selection, libraryItem }, index) => (
                   <div
-                    key={index}
-                    className="space-y-3 rounded-[20px] border border-[var(--border-soft)] p-4"
+                    key={`${selection.library_item_id}_${index}`}
+                    className="flex flex-col gap-3 rounded-[20px] border border-[var(--border-soft)] p-4"
                   >
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <input
-                        type="text"
-                        placeholder="Paste title + TikTok URL"
-                        value={item.product_name}
-                        onChange={(event) =>
-                          updateAffiliateItem(index, "product_name", event.target.value)
-                        }
-                        onPaste={(event) => {
-                          const pastedValue = event.clipboardData.getData("text");
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="relative h-16 w-16 overflow-hidden rounded-2xl bg-[var(--surface-muted)]">
+                          {libraryItem?.thumbnail_url ? (
+                            <Image
+                              src={libraryItem.thumbnail_url}
+                              alt={libraryItem.product_name}
+                              fill
+                              unoptimized
+                              sizes="64px"
+                              className="object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-full items-center justify-center text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+                              No Img
+                            </div>
+                          )}
+                        </div>
 
-                          if (handleAffiliateSmartPaste(index, pastedValue)) {
-                            event.preventDefault();
-                          }
-                        }}
-                        className="w-full rounded-2xl border border-[var(--border-soft)] bg-[var(--surface-muted)] px-4 py-3 text-sm outline-none"
-                      />
-                      <input
-                        type="url"
-                        placeholder="Affiliate URL"
-                        value={item.affiliate_url}
-                        onChange={(event) =>
-                          updateAffiliateItem(index, "affiliate_url", event.target.value)
-                        }
-                        onPaste={(event) => {
-                          const pastedValue = event.clipboardData.getData("text");
-
-                          if (handleAffiliateSmartPaste(index, pastedValue)) {
-                            event.preventDefault();
-                          }
-                        }}
-                        className="w-full rounded-2xl border border-[var(--border-soft)] bg-[var(--surface-muted)] px-4 py-3 text-sm outline-none"
-                      />
-                    </div>
-
-                    <input
-                      type="text"
-                      placeholder="Price"
-                      value={item.price}
-                      onChange={(event) =>
-                        updateAffiliateItem(index, "price", event.target.value)
-                      }
-                      className="w-full rounded-2xl border border-[var(--border-soft)] bg-[var(--surface-muted)] px-4 py-3 text-sm outline-none"
-                    />
-
-                    <div className="grid gap-3 md:grid-cols-[1fr_auto_auto]">
-                      <div className="space-y-3">
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={(event) =>
-                            handleAffiliateImageChange(
-                              index,
-                              event.target.files?.[0] ?? null,
-                            )
-                          }
-                          className="block w-full text-sm"
-                        />
-                        <p className="text-xs text-[var(--muted)]">
-                          {item.thumbnail_file?.name ??
-                            (item.thumbnail_preview ? "Image attached" : "No image selected")}
-                        </p>
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--muted)]">
+                            Item {index + 1}
+                          </p>
+                          <p className="mt-1 text-sm font-semibold text-[var(--foreground)]">
+                            {libraryItem?.product_name ?? "Missing affiliate item"}
+                          </p>
+                          <p className="mt-1 text-xs text-[var(--muted)]">
+                            {libraryItem?.display_price ??
+                              (libraryItem ? "No price" : `Missing ID: ${selection.library_item_id}`)}
+                          </p>
+                        </div>
                       </div>
-                      {item.thumbnail_preview ? (
+
+                      <div className="flex flex-wrap gap-2">
+                        {libraryItem?.thumbnail_url ? (
+                          <button
+                            type="button"
+                            onClick={() => setPreviewImage(libraryItem.thumbnail_url)}
+                            className="rounded-full border border-[var(--border-soft)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em]"
+                          >
+                            Preview
+                          </button>
+                        ) : null}
                         <button
                           type="button"
-                          onClick={() => setPreviewImage(item.thumbnail_preview)}
-                          className="rounded-2xl border border-[var(--border-soft)] px-4 py-3 text-sm font-semibold"
+                          onClick={() => moveAffiliateItem(index, "up")}
+                          disabled={index === 0}
+                          className="rounded-full border border-[var(--border-soft)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] disabled:cursor-not-allowed disabled:opacity-40"
                         >
-                          Preview
+                          Move up
                         </button>
-                      ) : null}
-                      <button
-                        type="button"
-                        onClick={() => removeAffiliateItem(index)}
-                        className="rounded-2xl border border-[var(--border-soft)] px-4 py-3 text-sm font-semibold"
-                      >
-                        Remove
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => moveAffiliateItem(index, "down")}
+                          disabled={index === selectedAffiliateItems.length - 1}
+                          className="rounded-full border border-[var(--border-soft)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          Move down
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeAffiliateItem(index)}
+                          className="rounded-full border border-[var(--border-soft)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em]"
+                        >
+                          Remove
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
+
+                <div className="space-y-3 rounded-[20px] border border-dashed border-[var(--border-soft)] bg-[var(--surface-muted)] p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--muted)]">
+                        Affiliate library
+                      </p>
+                      <p className="mt-1 text-sm text-[var(--muted)]">
+                        Add saved affiliate items to this outfit. Legacy custom items are no longer used.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void loadAffiliateLibrary(affiliateLibrarySearch)}
+                      className="rounded-full border border-[var(--border-soft)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em]"
+                    >
+                      Refresh
+                    </button>
+                  </div>
+
+                  <input
+                    type="text"
+                    placeholder="Search saved affiliate items"
+                    value={affiliateLibrarySearch}
+                    onChange={(event) => setAffiliateLibrarySearch(event.target.value)}
+                    className="w-full rounded-2xl border border-[var(--border-soft)] bg-white px-4 py-3 text-sm outline-none"
+                  />
+
+                  {isLoadingAffiliateLibrary ? (
+                    <p className="text-sm text-[var(--muted)]">Loading affiliate library...</p>
+                  ) : null}
+
+                  {!isLoadingAffiliateLibrary && filteredAffiliateLibraryItems.length === 0 ? (
+                    <p className="text-sm text-[var(--muted)]">
+                      No saved affiliate items match this search.
+                    </p>
+                  ) : null}
+
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {filteredAffiliateLibraryItems.map((libraryItem) => {
+                      const alreadyAdded = outfitForm.affiliate_items.some(
+                        (item) => item.library_item_id === libraryItem.id,
+                      );
+
+                      return (
+                        <div
+                          key={libraryItem.id}
+                          className="flex gap-3 rounded-[18px] border border-[var(--border-soft)] bg-white p-3"
+                        >
+                          <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-2xl bg-[var(--surface-muted)]">
+                            {libraryItem.thumbnail_url ? (
+                              <Image
+                                src={libraryItem.thumbnail_url}
+                                alt={libraryItem.product_name}
+                                fill
+                                unoptimized
+                                sizes="80px"
+                                className="object-cover"
+                              />
+                            ) : (
+                              <div className="flex h-full items-center justify-center text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+                                No Img
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="min-w-0 flex-1">
+                            <p className="line-clamp-2 text-sm font-semibold text-[var(--foreground)]">
+                              {libraryItem.product_name}
+                            </p>
+                            <p className="mt-1 text-xs text-[var(--muted)]">
+                              {libraryItem.display_price ?? "No price"}
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => addAffiliateItemFromLibrary(libraryItem)}
+                              disabled={alreadyAdded}
+                              className="mt-3 rounded-full bg-black px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-white disabled:cursor-not-allowed disabled:bg-black/30"
+                            >
+                              {alreadyAdded ? "Added" : "Add to outfit"}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
 
               <div className="grid gap-3 md:grid-cols-2">
@@ -953,8 +994,8 @@ export function AdminDashboard() {
         {error ? (
           <p className="mt-2 text-sm font-medium text-[var(--foreground)]">{error}</p>
         ) : null}
-
       </div>
+
       {typeof window !== "undefined" && previewImage
         ? createPortal(
             <div

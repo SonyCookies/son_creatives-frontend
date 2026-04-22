@@ -1,9 +1,9 @@
 import Image from "next/image";
 import Link from "next/link";
 import { AdminAccess } from "@/components/admin-access";
-import { AdminDashboard } from "@/components/admin-dashboard";
+import { AdminFeaturedManager } from "@/components/admin-featured-manager";
 
-export default function AdminPage() {
+export default function AdminFeaturedPage() {
   return (
     <main className="relative flex-1 overflow-hidden">
       <section className="relative mx-auto flex w-full max-w-7xl flex-1 flex-col px-6 py-6 sm:px-8 lg:px-10">
@@ -18,12 +18,12 @@ export default function AdminPage() {
               className="h-14 w-14 object-contain"
             />
             <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.35em] text-[var(--muted)]">
-              Son Creatives Admin
-            </p>
-            <h1 className="mt-3 font-serif text-4xl tracking-[-0.04em] text-[var(--foreground)]">
-              Collections
-            </h1>
+              <p className="text-xs font-semibold uppercase tracking-[0.35em] text-[var(--muted)]">
+                Son Creatives Admin
+              </p>
+              <h1 className="mt-3 font-serif text-4xl tracking-[-0.04em] text-[var(--foreground)]">
+                Featured
+              </h1>
             </div>
           </div>
           <Link
@@ -35,7 +35,7 @@ export default function AdminPage() {
         </header>
 
         <AdminAccess>
-          <AdminDashboard />
+          <AdminFeaturedManager />
         </AdminAccess>
       </section>
     </main>

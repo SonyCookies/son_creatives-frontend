@@ -1,5 +1,18 @@
+export type AffiliateLibraryItem = {
+  id: string;
+  product_name: string;
+  affiliate_url: string;
+  price: number | null;
+  display_price: string | null;
+  thumbnail_url: string | null;
+  thumbnail_path: string | null;
+  created_at?: string;
+  updated_at?: string;
+};
+
 export type AffiliateItem = {
   id: string;
+  library_item_id: string;
   product_name: string;
   affiliate_url: string;
   price: number | null;
@@ -65,6 +78,10 @@ export type FeaturedOutfitsResponse = {
   data: Outfit[];
 };
 
+export type AffiliateLibraryListResponse = {
+  data: AffiliateLibraryItem[];
+};
+
 export type UploadResponse = {
   message: string;
   data: {
@@ -85,12 +102,16 @@ export type AdminUpsertCollectionPayload = {
   description?: string;
 };
 
-export type AdminUpsertAffiliateItemPayload = {
+export type AdminUpsertAffiliateLibraryItemPayload = {
   product_name: string;
   affiliate_url: string;
   price?: number | null;
   thumbnail_url?: string | null;
   thumbnail_path?: string | null;
+};
+
+export type AdminUpsertAffiliateItemPayload = {
+  library_item_id: string;
   sort_order?: number;
 };
 
