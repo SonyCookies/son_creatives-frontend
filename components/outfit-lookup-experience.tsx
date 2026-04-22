@@ -9,8 +9,8 @@ import { LoadingSkeleton } from "@/components/loading-skeleton";
 import {
   fetchCodeLookup,
   fetchFeaturedOutfits,
-  OutfitLookupError,
-} from "@/lib/api";
+  FirebaseError as OutfitLookupError,
+} from "@/lib/firebase-service";
 import {
   formatOutfitCode,
   isValidOutfitCode,
@@ -25,7 +25,7 @@ export function OutfitLookupExperience() {
   const [status, setStatus] = useState<LookupStatus>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [lookupResult, setLookupResult] = useState<CodeLookupResponse | null>(null);
-  const [activeCollectionOutfitId, setActiveCollectionOutfitId] = useState<number | null>(null);
+  const [activeCollectionOutfitId, setActiveCollectionOutfitId] = useState<string | null>(null);
   const [lastSubmittedCode, setLastSubmittedCode] = useState<string | null>(null);
   const [featuredOutfits, setFeaturedOutfits] = useState<Outfit[]>([]);
   const [isTransitionPending, startTransition] = useTransition();
@@ -149,23 +149,22 @@ export function OutfitLookupExperience() {
         ) : null}
       </div>
 
-      <div
-        className="surface-panel animate-enter rounded-[32px] p-4 sm:p-6"
-        style={{ animationDelay: "120ms" }}
-      >
-        {isLoading ? <LoadingSkeleton /> : null}
+        <div className="mx-auto max-w-[1200px] space-y-6">
+          {isLoading ? <LoadingSkeleton /> : null}
 
-        {!isLoading && lookupResult?.type === "outfit" ? (
-          <OutfitResultCard outfit={lookupResult.data} />
-        ) : null}
-
-        {!isLoading && lookupResult?.type === "collection" ? (
-          <CollectionResultCard
-            collection={lookupResult.data}
-            activeOutfitId={activeCollectionOutfitId}
-            onSelectOutfit={setActiveCollectionOutfitId}
-          />
-        ) : null}
+          {!isLoading && status === "success" && lookupResult ? (
+            <div className="animate-enter">
+              {lookupResult.type === "outfit" ? (
+                <OutfitResultCard outfit={lookupResult.data} />
+              ) : (
+                <CollectionResultCard
+                  collection={lookupResult.data}
+                  activeOutfitId={activeCollectionOutfitId}
+                  onSelectOutfit={setActiveCollectionOutfitId}
+                />
+              )}
+            </div>
+          ) : null}
 
         {!isLoading && !lookupResult && status === "idle" ? (
           <EmptyState
@@ -206,8 +205,8 @@ function CollectionResultCard({
   onSelectOutfit,
 }: {
   collection: OutfitCollection;
-  activeOutfitId: number | null;
-  onSelectOutfit: (outfitId: number) => void;
+  activeOutfitId: string | null;
+  onSelectOutfit: (outfitId: string) => void;
 }) {
   const activeOutfit =
     collection.outfits.find((outfit) => outfit.id === activeOutfitId) ??
@@ -254,7 +253,7 @@ function CollectionResultCard({
             </div>
             <div className="space-y-2 p-4">
               <p className="text-xs uppercase tracking-[0.24em] opacity-70">
-                {outfit.formatted_code}
+                {outfit.formatted_code || formatOutfitCode(outfit.code)}
               </p>
               <p className="text-sm font-semibold">{outfit.title}</p>
             </div>
@@ -272,13 +271,13 @@ function CollectionResultCard({
               {activeOutfit.title}
             </h3>
             <p className="text-sm font-semibold text-[var(--foreground)]">
-              {activeOutfit.formatted_code}
+              {activeOutfit.formatted_code || formatOutfitCode(activeOutfit.code)}
             </p>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {activeOutfit.affiliate_items.map((item) => (
-              <AffiliateItemCard key={item.id} item={item} />
+            {activeOutfit.affiliate_items.map((item, index) => (
+              <AffiliateItemCard key={item.id || index} item={item} />
             ))}
           </div>
         </div>
@@ -303,7 +302,7 @@ function OutfitResultCard({ outfit }: { outfit: Outfit }) {
 
         <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-[rgba(0,0,0,0.78)] via-[rgba(0,0,0,0.18)] to-transparent p-6 text-white">
           <div className="inline-flex rounded-full border border-white/20 bg-white/14 px-4 py-2 text-sm font-semibold">
-            {outfit.formatted_code}
+            {outfit.formatted_code || formatOutfitCode(outfit.code)}
           </div>
         </div>
       </div>
@@ -315,7 +314,7 @@ function OutfitResultCard({ outfit }: { outfit: Outfit }) {
           </h2>
           {outfit.collection ? (
             <p className="mt-2 text-sm text-[var(--muted)]">
-              {outfit.collection.formatted_code}
+              {outfit.collection.formatted_code || formatOutfitCode(outfit.collection.code)}
             </p>
           ) : null}
           {outfit.description ? (
@@ -331,7 +330,7 @@ function OutfitResultCard({ outfit }: { outfit: Outfit }) {
               Code
             </p>
             <p className="mt-2 text-lg font-semibold text-[var(--foreground)]">
-              {outfit.formatted_code}
+              {outfit.formatted_code || formatOutfitCode(outfit.code)}
             </p>
           </div>
           <div className="rounded-[24px] border border-[var(--border-soft)] bg-[rgba(255,255,255,0.76)] p-4">
@@ -345,8 +344,8 @@ function OutfitResultCard({ outfit }: { outfit: Outfit }) {
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          {outfit.affiliate_items.map((item) => (
-            <AffiliateItemCard key={item.id} item={item} />
+          {outfit.affiliate_items.map((item, index) => (
+            <AffiliateItemCard key={item.id || index} item={item} />
           ))}
         </div>
       </div>

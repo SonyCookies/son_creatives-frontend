@@ -12,13 +12,14 @@ import {
   uploadAdminImage,
   updateAdminCollection,
   updateAdminOutfit,
-  ApiError,
-} from "@/lib/api";
+  FirebaseError as ApiError,
+} from "@/lib/firebase-service";
 import type {
   AdminUpsertCollectionPayload,
   AdminUpsertOutfitPayload,
   OutfitCollection,
 } from "@/types/outfit";
+import { normalizeOutfitCode, formatOutfitCode, formatInputCode } from "@/lib/outfit-code";
 
 type CollectionFormState = {
   code: string;
@@ -27,10 +28,12 @@ type CollectionFormState = {
 };
 
 type AffiliateItemFormState = {
+  id: string;
   product_name: string;
   affiliate_url: string;
   price: string;
   thumbnail_url: string;
+  thumbnail_path: string;
   thumbnail_file: File | null;
   thumbnail_preview: string;
 };
@@ -39,6 +42,7 @@ type OutfitFormState = {
   code: string;
   title: string;
   image_url: string;
+  image_path: string;
   image_file: File | null;
   image_preview: string;
   description: string;
@@ -47,10 +51,12 @@ type OutfitFormState = {
 };
 
 const emptyAffiliateItem = (): AffiliateItemFormState => ({
+  id: `item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
   product_name: "",
   affiliate_url: "",
   price: "",
   thumbnail_url: "",
+  thumbnail_path: "",
   thumbnail_file: null,
   thumbnail_preview: "",
 });
@@ -65,6 +71,7 @@ const emptyOutfitForm = (): OutfitFormState => ({
   code: "",
   title: "",
   image_url: "",
+  image_path: "",
   image_file: null,
   image_preview: "",
   description: "",
@@ -78,8 +85,8 @@ function createCollectionFormState(collection: OutfitCollection | null): Collect
   }
 
   return {
-    code: collection.formatted_code,
-    title: collection.title,
+    code: collection.formatted_code ?? collection.code ?? "",
+    title: collection.title ?? "",
     description: collection.description ?? "",
   };
 }
@@ -92,20 +99,23 @@ function createOutfitFormState(
   }
 
   return {
-    code: outfit.formatted_code,
-    title: outfit.title,
-    image_url: outfit.image_url,
+    code: outfit.formatted_code ?? outfit.code ?? "",
+    title: outfit.title ?? "",
+    image_url: outfit.image_url ?? "",
+    image_path: outfit.image_path ?? "",
     image_file: null,
-    image_preview: outfit.image_url,
+    image_preview: outfit.image_url ?? "",
     description: outfit.description ?? "",
-    is_featured: outfit.is_featured,
+    is_featured: !!outfit.is_featured,
     affiliate_items:
       outfit.affiliate_items.length > 0
         ? outfit.affiliate_items.map((item) => ({
-            product_name: item.product_name,
-            affiliate_url: item.affiliate_url,
-            price: item.price !== null ? String(item.price) : "",
+            id: item.id,
+            product_name: item.product_name ?? "",
+            affiliate_url: item.affiliate_url ?? "",
+            price: item.price != null ? String(item.price) : "",
             thumbnail_url: item.thumbnail_url ?? "",
+            thumbnail_path: item.thumbnail_path ?? "",
             thumbnail_file: null,
             thumbnail_preview: item.thumbnail_url ?? "",
           }))
@@ -138,8 +148,8 @@ function parseAffiliatePaste(value: string) {
 
 export function AdminDashboard() {
   const [collections, setCollections] = useState<OutfitCollection[]>([]);
-  const [selectedCollectionId, setSelectedCollectionId] = useState<number | null>(null);
-  const [selectedOutfitId, setSelectedOutfitId] = useState<number | null>(null);
+  const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null);
+  const [selectedOutfitId, setSelectedOutfitId] = useState<string | null>(null);
   const [collectionSearch, setCollectionSearch] = useState("");
   const [appliedCollectionSearch, setAppliedCollectionSearch] = useState("");
   const [collectionForm, setCollectionForm] = useState<CollectionFormState>(emptyCollectionForm);
@@ -150,16 +160,17 @@ export function AdminDashboard() {
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [orphanedPaths, setOrphanedPaths] = useState<string[]>([]);
 
   const selectedCollection =
-    collections.find((collection) => collection.id === selectedCollectionId) ?? null;
+    collections.find((collection) => String(collection.id) === selectedCollectionId) ?? null;
   const selectedOutfit =
-    selectedCollection?.outfits.find((outfit) => outfit.id === selectedOutfitId) ?? null;
+    selectedCollection?.outfits.find((outfit) => String(outfit.id) === selectedOutfitId) ?? null;
 
   function syncCollectionState(
     nextCollections: OutfitCollection[],
-    nextCollectionId?: number | null,
-    nextOutfitId?: number | null,
+    nextCollectionId?: string | number | null,
+    nextOutfitId?: string | number | null,
   ) {
     const requestedCollectionId = nextCollectionId ?? selectedCollectionId;
     const activeCollection =
@@ -219,8 +230,8 @@ export function AdminDashboard() {
 
   async function loadCollections(options?: {
     search?: string;
-    nextCollectionId?: number | null;
-    nextOutfitId?: number | null;
+    nextCollectionId?: string | number | null;
+    nextOutfitId?: string | number | null;
   }) {
     setIsLoading(true);
     setError(null);
@@ -257,14 +268,14 @@ export function AdminDashboard() {
     setMessage(null);
 
     const payload: AdminUpsertCollectionPayload = {
-      code: collectionForm.code,
-      title: collectionForm.title,
-      description: collectionForm.description,
+      code: normalizeOutfitCode(collectionForm.code),
+      title: collectionForm.title || "",
+      description: collectionForm.description || "",
     };
 
     try {
       if (selectedCollection) {
-        await updateAdminCollection(selectedCollection.id, payload);
+        await updateAdminCollection(String(selectedCollection.id), payload);
         setMessage("Collection updated.");
         await loadCollections({
           search: appliedCollectionSearch,
@@ -298,7 +309,7 @@ export function AdminDashboard() {
     setMessage(null);
 
     try {
-      await deleteAdminCollection(selectedCollection.id);
+      await deleteAdminCollection(String(selectedCollection.id));
       setMessage("Collection deleted.");
       setSelectedCollectionId(null);
       setSelectedOutfitId(null);
@@ -326,10 +337,17 @@ export function AdminDashboard() {
 
     try {
       let outfitImageUrl = outfitForm.image_url;
+      let outfitImagePath = outfitForm.image_path;
 
       if (outfitForm.image_file) {
         const uploadedImage = await uploadAdminImage(outfitForm.image_file, "outfit");
         outfitImageUrl = uploadedImage.data.url;
+        
+        // If we're replacing an old image, track it for deletion
+        if (outfitImagePath) {
+          setOrphanedPaths(prev => [...prev, outfitImagePath]);
+        }
+        outfitImagePath = uploadedImage.data.path;
       }
 
       if (!outfitImageUrl) {
@@ -340,33 +358,44 @@ export function AdminDashboard() {
 
       const affiliateItems = await Promise.all(
         outfitForm.affiliate_items.map(async (item, index) => {
-          let thumbnailUrl = item.thumbnail_url || undefined;
+          let thumbnailUrl = item.thumbnail_url || "";
+          let thumbnailPath = item.thumbnail_path || "";
 
           if (item.thumbnail_file) {
             const uploadedThumbnail = await uploadAdminImage(
               item.thumbnail_file,
               "affiliate",
             );
+            
+            // Track old thumbnail for deletion if replaced
+            if (thumbnailPath) {
+              setOrphanedPaths(prev => [...prev, thumbnailPath]);
+            }
+            
             thumbnailUrl = uploadedThumbnail.data.url;
+            thumbnailPath = uploadedThumbnail.data.path;
           }
 
           return {
-            product_name: item.product_name,
-            affiliate_url: item.affiliate_url,
+            id: item.id,
+            product_name: item.product_name || "",
+            affiliate_url: item.affiliate_url || "",
             price: item.price ? Number(item.price) : null,
-            thumbnail_url: thumbnailUrl,
+            thumbnail_url: thumbnailUrl || null,
+            thumbnail_path: thumbnailPath || null,
             sort_order: index + 1,
           };
         }),
       );
 
       const payload: AdminUpsertOutfitPayload = {
-        code: outfitForm.code,
-        title: outfitForm.title,
-        image_url: outfitImageUrl,
-        description: outfitForm.description,
-        is_featured: outfitForm.is_featured,
-        outfit_collection_id: selectedCollection.id,
+        code: normalizeOutfitCode(outfitForm.code),
+        title: outfitForm.title || "",
+        image_url: outfitImageUrl || "",
+        image_path: outfitImagePath || null,
+        description: outfitForm.description || "",
+        is_featured: !!outfitForm.is_featured,
+        outfit_collection_id: String(selectedCollection.id),
         affiliate_items: affiliateItems,
       };
 
@@ -387,6 +416,12 @@ export function AdminDashboard() {
           nextOutfitId: null,
         });
       }
+      // After successful save, cleanup any orphaned images
+      if (orphanedPaths.length > 0) {
+        const { deleteAdminImage } = await import("@/lib/firebase-service");
+        await Promise.all(orphanedPaths.map(path => deleteAdminImage(path).catch(console.error)));
+        setOrphanedPaths([]);
+      }
     } catch (saveError) {
       setError(resolveErrorMessage(saveError));
     } finally {
@@ -404,12 +439,12 @@ export function AdminDashboard() {
     setMessage(null);
 
     try {
-      await deleteAdminOutfit(selectedOutfit.id);
+      await deleteAdminOutfit(String(selectedOutfit.id));
       setMessage("Outfit deleted.");
       setSelectedOutfitId(null);
       await loadCollections({
         search: appliedCollectionSearch,
-        nextCollectionId: selectedCollection.id,
+        nextCollectionId: String(selectedCollection.id),
         nextOutfitId: null,
       });
     } catch (deleteError) {
@@ -443,13 +478,19 @@ export function AdminDashboard() {
   }
 
   function removeAffiliateItem(index: number) {
-    setOutfitForm((current) => ({
-      ...current,
-      affiliate_items:
-        current.affiliate_items.length === 1
-          ? [emptyAffiliateItem()]
-          : current.affiliate_items.filter((_, itemIndex) => itemIndex !== index),
-    }));
+    setOutfitForm((current) => {
+      const itemToDelete = current.affiliate_items[index];
+      if (itemToDelete.thumbnail_path) {
+        setOrphanedPaths((prev) => [...prev, itemToDelete.thumbnail_path]);
+      }
+      return {
+        ...current,
+        affiliate_items:
+          current.affiliate_items.length === 1
+            ? [emptyAffiliateItem()]
+            : current.affiliate_items.filter((_, itemIndex) => itemIndex !== index),
+      };
+    });
   }
 
   function handleOutfitImageChange(file: File | null) {
@@ -574,13 +615,15 @@ export function AdminDashboard() {
                   setCollectionForm(createCollectionFormState(collection));
                   setOutfitForm(createOutfitFormState(firstOutfit));
                 }}
-                className={`w-full rounded-[22px] border px-4 py-4 text-left ${
-                  selectedCollectionId === collection.id
-                    ? "border-black bg-black text-white"
-                    : "border-[var(--border-soft)] bg-white text-[var(--foreground)]"
+                className={`group w-full rounded-[22px] border px-4 py-4 text-left transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] ${
+                  selectedCollectionId === String(collection.id)
+                    ? "border-black bg-black text-white shadow-xl shadow-black/10"
+                    : "border-[var(--border-soft)] bg-white text-[var(--foreground)] hover:border-black/20"
                 }`}
               >
-                <p className="text-sm font-semibold">{collection.formatted_code}</p>
+                <p className="text-sm font-semibold">
+                  {collection.formatted_code || formatOutfitCode(collection.code)}
+                </p>
                 <p className="mt-1 text-sm opacity-80">{collection.title}</p>
               </button>
             ))}
@@ -609,10 +652,13 @@ export function AdminDashboard() {
               type="text"
               placeholder="#000000"
               value={collectionForm.code}
-              onChange={(event) =>
-                setCollectionForm((current) => ({ ...current, code: event.target.value }))
+              onChange={(e) =>
+                setCollectionForm({
+                  ...collectionForm,
+                  code: formatInputCode(e.target.value),
+                })
               }
-              className="w-full rounded-2xl border border-[var(--border-soft)] bg-white px-4 py-3 text-sm outline-none"
+              className="w-full rounded-2xl border border-[var(--border-soft)] bg-white px-4 py-3 text-sm outline-none focus:border-black"
             />
             <input
               type="text"
@@ -695,10 +741,13 @@ export function AdminDashboard() {
                   type="text"
                   placeholder="#AAA111"
                   value={outfitForm.code}
-                  onChange={(event) =>
-                    setOutfitForm((current) => ({ ...current, code: event.target.value }))
+                  onChange={(e) =>
+                    setOutfitForm({
+                      ...outfitForm,
+                      code: formatInputCode(e.target.value),
+                    })
                   }
-                  className="w-full rounded-2xl border border-[var(--border-soft)] bg-white px-4 py-3 text-sm outline-none"
+                  className="w-full rounded-2xl border border-[var(--border-soft)] bg-white px-4 py-3 text-sm outline-none focus:border-black"
                 />
                 <input
                   type="text"

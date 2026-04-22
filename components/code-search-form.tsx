@@ -1,6 +1,7 @@
 "use client";
 
 import type { FormEvent } from "react";
+import { formatInputCode } from "@/lib/outfit-code";
 
 type CodeSearchFormProps = {
   value: string;
@@ -35,7 +36,7 @@ export function CodeSearchForm({
           inputMode="text"
           placeholder="AAA111 or #000000"
           value={value}
-          onChange={(event) => onValueChange(event.target.value)}
+          onChange={(event) => onValueChange(formatInputCode(event.target.value))}
           className="min-h-14 flex-1 rounded-2xl border border-[var(--border-soft)] bg-white px-4 text-base text-[var(--foreground)] outline-none placeholder:text-[rgba(0,0,0,0.42)] focus:border-[var(--accent)] focus:shadow-[0_0_0_4px_rgba(0,0,0,0.08)]"
         />
 

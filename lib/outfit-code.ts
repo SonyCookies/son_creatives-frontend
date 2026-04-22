@@ -13,3 +13,9 @@ export function formatOutfitCode(value: string): string {
   const normalizedCode = normalizeOutfitCode(value);
   return normalizedCode ? `#${normalizedCode}` : "";
 }
+
+export function formatInputCode(value: string): string {
+  if (value === "") return "";
+  const clean = value.replace(/[^a-zA-Z0-9]/g, "").toUpperCase().slice(0, 6);
+  return `#${clean}`;
+}

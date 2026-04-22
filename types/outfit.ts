@@ -1,15 +1,16 @@
 export type AffiliateItem = {
-  id: number;
+  id: string;
   product_name: string;
   affiliate_url: string;
   price: number | null;
   display_price: string | null;
   thumbnail_url: string | null;
+  thumbnail_path: string | null;
   sort_order: number;
 };
 
 export type OutfitCollectionSummary = {
-  id: number;
+  id: string;
   code: string;
   formatted_code: string;
   title: string;
@@ -17,12 +18,13 @@ export type OutfitCollectionSummary = {
 };
 
 export type Outfit = {
-  id: number;
+  id: string;
   code: string;
   formatted_code: string;
-  collection_id: number | null;
+  collection_id: string | null;
   title: string;
   image_url: string;
+  image_path: string | null;
   description: string | null;
   is_featured: boolean;
   collection?: OutfitCollectionSummary | null;
@@ -87,7 +89,8 @@ export type AdminUpsertAffiliateItemPayload = {
   product_name: string;
   affiliate_url: string;
   price?: number | null;
-  thumbnail_url?: string;
+  thumbnail_url?: string | null;
+  thumbnail_path?: string | null;
   sort_order?: number;
 };
 
@@ -95,8 +98,9 @@ export type AdminUpsertOutfitPayload = {
   code: string;
   title: string;
   image_url: string;
-  description?: string;
+  image_path: string | null;
+  description?: string | null;
   is_featured: boolean;
-  outfit_collection_id?: number;
+  outfit_collection_id?: string;
   affiliate_items: AdminUpsertAffiliateItemPayload[];
 };
