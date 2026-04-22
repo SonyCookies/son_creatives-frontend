@@ -1,5 +1,6 @@
 import Image from "next/image";
 import { OutfitLookupExperience } from "@/components/outfit-lookup-experience";
+import { VisitorCounter } from "@/components/visitor-counter";
 
 export default function Home() {
   return (
@@ -28,6 +29,9 @@ export default function Home() {
                 Outfit Codes
               </span>
             </div>
+          </div>
+          <div className="pt-1">
+            <VisitorCounter />
           </div>
         </header>
 

@@ -3,12 +3,15 @@ import {
   doc,
   getDocs,
   getDoc,
+  setDoc,
   query,
   where,
   limit,
   addDoc,
   updateDoc,
   deleteDoc,
+  increment,
+  onSnapshot,
   doc as firestoreDoc,
 } from "firebase/firestore";
 import {
@@ -396,3 +399,46 @@ export async function uploadAdminImage(
     throw new FirebaseError(error.message || "Failed to upload image.", 500);
   }
 }
+
+/**
+ * ANALYTICS: Increment visitor count
+ */
+export async function trackVisitor() {
+  try {
+    const statsRef = firestoreDoc(db, "analytics", "site_stats");
+    await setDoc(
+      statsRef,
+      {
+        visitor_count: increment(1),
+        last_visit: new Date().toISOString(),
+      },
+      { merge: true }
+    );
+  } catch (error) {
+    console.error("Error tracking visitor:", error);
+  }
+}
+
+/**
+ * ANALYTICS: Subscribe to visitor stats
+ */
+export function subscribeToVisitorStats(
+  callback: (stats: { visitor_count: number } | null) => void
+) {
+  const statsRef = firestoreDoc(db, "analytics", "site_stats");
+  return onSnapshot(
+    statsRef,
+    (doc) => {
+      if (doc.exists()) {
+        callback(doc.data() as { visitor_count: number });
+      } else {
+        callback(null);
+      }
+    },
+    (error) => {
+      console.error("Error subscribing to visitor stats:", error);
+      callback(null);
+    }
+  );
+}
+
