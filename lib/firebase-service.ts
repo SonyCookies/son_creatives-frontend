@@ -365,22 +365,34 @@ export async function checkCodeUniqueness(code: string, excludeId?: string) {
 /* -------------------------------------------------------------------------- */
 
 /**
- * ADMIN: Fetch all collections (optionally searched by code)
+ * ADMIN: Fetch searched collections by code or title
  */
 export async function fetchAdminCollections(search?: string) {
   try {
     const collectionsRef = collection(db, "collections");
-    let q = query(collectionsRef);
+    const searchTerm = search?.trim().toLowerCase() ?? "";
     const affiliateCache = new Map<string, AffiliateLibraryItem | null>();
 
-    if (search?.trim()) {
-      q = query(q, where("code", "==", search.trim()));
+    if (!searchTerm) {
+      return { data: [] };
     }
 
-    const snap = await getDocs(q);
+    const snap = await getDocs(query(collectionsRef, limit(100)));
+    const matchingDocs = snap.docs.filter((d) => {
+      const data = d.data() as Record<string, unknown>;
+      const code = String(data.code ?? "").toLowerCase();
+      const formattedCode = formatOutfitCode(String(data.code ?? "")).toLowerCase();
+      const title = String(data.title ?? "").toLowerCase();
+
+      return (
+        code.includes(searchTerm) ||
+        formattedCode.includes(searchTerm) ||
+        title.includes(searchTerm)
+      );
+    });
 
     // Parallel fetch for sub-outfits is more efficient
-    const collectionPromises = snap.docs.map(async (d) => {
+    const collectionPromises = matchingDocs.map(async (d) => {
       const data = d.data() as Record<string, unknown>;
       const outfitsQuery = query(
         collection(db, "outfits"),

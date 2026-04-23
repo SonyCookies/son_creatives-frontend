@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   createAdminCollection,
@@ -36,6 +36,7 @@ type CollectionFormState = {
 
 type OutfitAffiliateSelection = {
   library_item_id: string;
+  library_item: AffiliateLibraryItem | null;
 };
 
 type OutfitFormState = {
@@ -101,6 +102,17 @@ function createOutfitFormState(
     affiliate_items: outfit.affiliate_items
       .map((item) => ({
         library_item_id: item.library_item_id ?? item.id,
+        library_item: item.library_item_id
+          ? {
+              id: item.library_item_id,
+              product_name: item.product_name,
+              affiliate_url: item.affiliate_url,
+              price: item.price,
+              display_price: item.display_price,
+              thumbnail_url: item.thumbnail_url,
+              thumbnail_path: item.thumbnail_path,
+            }
+          : null,
       }))
       .filter((item) => Boolean(item.library_item_id)),
   };
@@ -117,14 +129,16 @@ export function AdminDashboard() {
   const [collectionForm, setCollectionForm] =
     useState<CollectionFormState>(emptyCollectionForm);
   const [outfitForm, setOutfitForm] = useState<OutfitFormState>(emptyOutfitForm);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [isSavingCollection, setIsSavingCollection] = useState(false);
   const [isSavingOutfit, setIsSavingOutfit] = useState(false);
   const [affiliateLibraryItems, setAffiliateLibraryItems] = useState<
     AffiliateLibraryItem[]
   >([]);
   const [affiliateLibrarySearch, setAffiliateLibrarySearch] = useState("");
-  const [isLoadingAffiliateLibrary, setIsLoadingAffiliateLibrary] = useState(true);
+  const [appliedAffiliateLibrarySearch, setAppliedAffiliateLibrarySearch] =
+    useState("");
+  const [isLoadingAffiliateLibrary, setIsLoadingAffiliateLibrary] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -149,24 +163,12 @@ export function AdminDashboard() {
       outfitForm.affiliate_items.map((selection) => ({
         selection,
         libraryItem:
-          affiliateLibraryMap.get(selection.library_item_id) ?? null,
+          affiliateLibraryMap.get(selection.library_item_id) ??
+          selection.library_item ??
+          null,
       })),
     [affiliateLibraryMap, outfitForm.affiliate_items],
   );
-
-  const filteredAffiliateLibraryItems = useMemo(() => {
-    const searchTerm = affiliateLibrarySearch.trim().toLowerCase();
-
-    if (!searchTerm) {
-      return affiliateLibraryItems;
-    }
-
-    return affiliateLibraryItems.filter(
-      (item) =>
-        item.product_name.toLowerCase().includes(searchTerm) ||
-        item.affiliate_url.toLowerCase().includes(searchTerm),
-    );
-  }, [affiliateLibraryItems, affiliateLibrarySearch]);
 
   function syncCollectionState(
     nextCollections: OutfitCollection[],
@@ -192,58 +194,26 @@ export function AdminDashboard() {
     setOutfitForm(createOutfitFormState(activeOutfit));
   }
 
-  useEffect(() => {
-    let isMounted = true;
-
-    async function bootstrap() {
-      try {
-        const [collectionsPayload, affiliateItemsPayload] = await Promise.all([
-          fetchAdminCollections(),
-          fetchAdminAffiliateItems(),
-        ]);
-
-        if (!isMounted) {
-          return;
-        }
-
-        const firstCollection = collectionsPayload.data[0] ?? null;
-        const firstOutfit = firstCollection?.outfits[0] ?? null;
-
-        setCollections(collectionsPayload.data);
-        setSelectedCollectionId(firstCollection?.id ?? null);
-        setSelectedOutfitId(firstOutfit?.id ?? null);
-        setCollectionForm(createCollectionFormState(firstCollection));
-        setOutfitForm(createOutfitFormState(firstOutfit));
-        setAffiliateLibraryItems(affiliateItemsPayload.data);
-      } catch (loadError) {
-        if (isMounted) {
-          setError(resolveErrorMessage(loadError));
-        }
-      } finally {
-        if (isMounted) {
-          setIsLoading(false);
-          setIsLoadingAffiliateLibrary(false);
-        }
-      }
-    }
-
-    void bootstrap();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
   async function loadCollections(options?: {
     search?: string;
     nextCollectionId?: string | number | null;
     nextOutfitId?: string | number | null;
   }) {
+    const activeSearch = (options?.search ?? appliedCollectionSearch).trim();
+
+    if (!activeSearch) {
+      setCollections([]);
+      setSelectedCollectionId(null);
+      setSelectedOutfitId(null);
+      setAppliedCollectionSearch("");
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
 
     try {
-      const activeSearch = options?.search ?? appliedCollectionSearch;
       const payload = await fetchAdminCollections(activeSearch);
 
       setAppliedCollectionSearch(activeSearch);
@@ -260,12 +230,22 @@ export function AdminDashboard() {
   }
 
   async function loadAffiliateLibrary(search?: string) {
+    const activeSearch = search?.trim() ?? "";
+
+    if (!activeSearch) {
+      setAffiliateLibraryItems([]);
+      setAppliedAffiliateLibrarySearch("");
+      setIsLoadingAffiliateLibrary(false);
+      return;
+    }
+
     setIsLoadingAffiliateLibrary(true);
     setError(null);
 
     try {
-      const payload = await fetchAdminAffiliateItems(search);
+      const payload = await fetchAdminAffiliateItems(activeSearch, 50);
       setAffiliateLibraryItems(payload.data);
+      setAppliedAffiliateLibrarySearch(activeSearch);
     } catch (loadError) {
       setError(resolveErrorMessage(loadError));
     } finally {
@@ -456,6 +436,7 @@ export function AdminDashboard() {
         ...current.affiliate_items,
         {
           library_item_id: item.id,
+          library_item: item,
         },
       ],
     }));
@@ -536,7 +517,7 @@ export function AdminDashboard() {
           >
             <input
               type="text"
-              placeholder="Search collection"
+              placeholder="Search collection title or code"
               value={collectionSearch}
               onChange={(event) => setCollectionSearch(event.target.value)}
               className="w-full rounded-2xl border border-[var(--border-soft)] bg-white px-4 py-3 text-sm outline-none"
@@ -558,7 +539,7 @@ export function AdminDashboard() {
               <p className="text-sm text-[var(--muted)]">
                 {appliedCollectionSearch.trim()
                   ? "No matching collections."
-                  : "No collections yet."}
+                  : "Search by collection title or code to show results."}
               </p>
             ) : null}
 
@@ -877,38 +858,55 @@ export function AdminDashboard() {
                         Affiliate library
                       </p>
                       <p className="mt-1 text-sm text-[var(--muted)]">
-                        Add saved affiliate items to this outfit. Legacy custom items are no longer used.
+                        Search saved affiliate items before adding them to this outfit.
                       </p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => void loadAffiliateLibrary(affiliateLibrarySearch)}
-                      className="rounded-full border border-[var(--border-soft)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em]"
-                    >
-                      Refresh
-                    </button>
                   </div>
 
-                  <input
-                    type="text"
-                    placeholder="Search saved affiliate items"
-                    value={affiliateLibrarySearch}
-                    onChange={(event) => setAffiliateLibrarySearch(event.target.value)}
-                    className="w-full rounded-2xl border border-[var(--border-soft)] bg-white px-4 py-3 text-sm outline-none"
-                  />
+                  <form
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void loadAffiliateLibrary(affiliateLibrarySearch);
+                    }}
+                    className="flex flex-col gap-2 sm:flex-row"
+                  >
+                    <input
+                      type="text"
+                      placeholder="Search saved affiliate items"
+                      value={affiliateLibrarySearch}
+                      onChange={(event) => setAffiliateLibrarySearch(event.target.value)}
+                      className="w-full rounded-2xl border border-[var(--border-soft)] bg-white px-4 py-3 text-sm outline-none"
+                    />
+                    <button
+                      type="submit"
+                      disabled={isLoadingAffiliateLibrary}
+                      className="rounded-2xl border border-black px-4 py-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Search
+                    </button>
+                  </form>
 
                   {isLoadingAffiliateLibrary ? (
-                    <p className="text-sm text-[var(--muted)]">Loading affiliate library...</p>
+                    <p className="text-sm text-[var(--muted)]">Searching affiliate library...</p>
                   ) : null}
 
-                  {!isLoadingAffiliateLibrary && filteredAffiliateLibraryItems.length === 0 ? (
+                  {!isLoadingAffiliateLibrary &&
+                  !appliedAffiliateLibrarySearch.trim() ? (
+                    <p className="text-sm text-[var(--muted)]">
+                      Enter a product name or URL, then click Search to show matching affiliate items.
+                    </p>
+                  ) : null}
+
+                  {!isLoadingAffiliateLibrary &&
+                  appliedAffiliateLibrarySearch.trim() &&
+                  affiliateLibraryItems.length === 0 ? (
                     <p className="text-sm text-[var(--muted)]">
                       No saved affiliate items match this search.
                     </p>
                   ) : null}
 
                   <div className="grid gap-3 md:grid-cols-2">
-                    {filteredAffiliateLibraryItems.map((libraryItem) => {
+                    {affiliateLibraryItems.map((libraryItem) => {
                       const alreadyAdded = outfitForm.affiliate_items.some(
                         (item) => item.library_item_id === libraryItem.id,
                       );
